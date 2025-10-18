@@ -55,3 +55,43 @@ def test_auto_classification_on_parse(client):
     assert item_data["name_standard"] == "yogures"
     assert item_data["category"] is not None
     assert item_data["category"]["name"] == "Lácteos"
+
+# --- OCR and Price Comparison Tests ---
+def test_ocr_price_comparison(client):
+    # 1. Setup: Create items and manual transactions
+    # Item 1: leche (no discrepancy)
+    item1_res = client.post("/master/item", json={"name_standard": "leche", "category_id": 1})
+    li1_res = client.post("/list/item", json={"item_id": item1_res.json()["id"], "planned_quantity": 1})
+    client.post("/transaction/add", json={"shopping_list_item_id": li1_res.json()["id"], "real_quantity": 1, "real_unit_price": 1000.0})
+
+    # Item 2: café (with discrepancy > 5%)
+    item2_res = client.post("/master/item", json={"name_standard": "café", "category_id": 1})
+    li2_res = client.post("/list/item", json={"item_id": item2_res.json()["id"], "planned_quantity": 1})
+    client.post("/transaction/add", json={"shopping_list_item_id": li2_res.json()["id"], "real_quantity": 1, "real_unit_price": 12000.0})
+
+    # Item 3: tortillas (no discrepancy)
+    item3_res = client.post("/master/item", json={"name_standard": "tortillas", "category_id": 1})
+    li3_res = client.post("/list/item", json={"item_id": item3_res.json()["id"], "planned_quantity": 1})
+    client.post("/transaction/add", json={"shopping_list_item_id": li3_res.json()["id"], "real_quantity": 1, "real_unit_price": 4000.0})
+
+    # 2. Call the OCR endpoint
+    # We pass a dummy shopping_list_id (e.g., 1) and a dummy file.
+    dummy_file_content = b"dummy invoice content"
+    response = client.post(
+        "/invoice/ocr?shopping_list_id=1",
+        files={"invoice_image": ("invoice.jpg", dummy_file_content, "image/jpeg")}
+    )
+
+    # 3. Assert the results
+    assert response.status_code == 200
+    result = response.json()
+
+    assert "discrepancies" in result
+    assert len(result["discrepancies"]) == 1
+
+    discrepancy = result["discrepancies"][0]
+    assert discrepancy["item_name_manual"] == "café"
+    assert discrepancy["price_manual"] == 12000.0
+    assert discrepancy["item_name_ocr"] == "café"
+    assert discrepancy["price_ocr"] == 13500.0
+    assert "discrepancy_percentage" in discrepancy
