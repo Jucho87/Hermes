@@ -1,9 +1,9 @@
 from fastapi import FastAPI
-from .database import engine
+from .database import engine, SessionLocal
 from .models import models
 from .api import master, shopping_list, transactions, reports
-
-models.Base.metadata.create_all(bind=engine)
+from . import crud
+from .schemas.schemas import CategoryCreate
 
 app = FastAPI(
     title="Hermes API",

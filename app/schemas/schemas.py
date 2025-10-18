@@ -15,10 +15,14 @@ class Category(CategoryBase):
     class Config:
         from_attributes = True
 
+# --- General Schemas ---
+class TextInput(BaseModel):
+    text_input: str
+
 # --- Item Master Schemas ---
 class ItemMasterBase(BaseModel):
     name_standard: str
-    category_id: int
+    category_id: Optional[int] = None
 
 class ItemMasterCreate(ItemMasterBase):
     pass
