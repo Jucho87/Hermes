@@ -1,0 +1,17 @@
+[tool.pytest.ini_options]
+pythonpath = [
+  "."
+]
+
+[project]
+name = "hermes"
+version = "0.1.0"
+description = "API for shopping and market control (SACI Project)."
+dependencies = [
+    "fastapi==0.111.0",
+    "uvicorn[standard]==0.29.0",
+    "sqlalchemy==2.0.30",
+    "pydantic==2.7.1",
+    "python-multipart==0.0.9",
+    "pytest==8.2.0",
+]
