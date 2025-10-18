@@ -104,3 +104,11 @@ def get_last_price_for_item(db: Session, item_id: int):
     if last_transaction:
         return last_transaction.real_unit_price
     return None
+
+def get_transactions_by_shopping_list_item_id(db: Session, shopping_list_item_id: int):
+    """
+    Simulates getting all transactions related to a single shopping trip/session.
+    For now, it just returns all transactions for simplicity.
+    A real implementation would need a way to group shopping list items into a session.
+    """
+    return db.query(models.TransactionDetail).all()

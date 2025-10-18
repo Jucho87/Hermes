@@ -19,6 +19,18 @@ class Category(CategoryBase):
 class TextInput(BaseModel):
     text_input: str
 
+# --- OCR Schemas ---
+class OCRDiscrepancy(BaseModel):
+    item_name_manual: str
+    price_manual: float
+    item_name_ocr: str
+    price_ocr: float
+    discrepancy_percentage: float
+
+class OCRResult(BaseModel):
+    discrepancies: List[OCRDiscrepancy]
+    message: str
+
 # --- Item Master Schemas ---
 class ItemMasterBase(BaseModel):
     name_standard: str
