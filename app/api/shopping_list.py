@@ -3,8 +3,9 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from .. import crud
-from ..schemas.schemas import ShoppingListItem, ShoppingListItemCreate, ShoppingListItemUpdate, ItemMasterCreate
+from ..schemas.schemas import ShoppingListItem, ShoppingListItemCreate, ShoppingListItemUpdate, ItemMasterCreate, TextInput
 from ..database import get_db
+from .. import nlp
 
 router = APIRouter()
 
@@ -35,61 +36,59 @@ def delete_shopping_list_item(item_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Shopping list item not found")
     return db_item
 
-# Placeholder for conversational input
-class ParsedItem(ItemMasterCreate):
-    planned_quantity: float
-    estimated_price: Optional[float] = None
-
 @router.post("/list/parse", response_model=List[ShoppingListItem])
-def parse_list(text_input: str, db: Session = Depends(get_db)):
+def parse_list(text_input: TextInput, db: Session = Depends(get_db)):
     """
-    ## Simple Parser (Temporary)
-    This is a temporary endpoint that simulates the parsing of conversational input.
-    **It does not use AI yet.**
-
-    **Expected format:** A list of items separated by semicolons (;).
-    Each item must be in the format: `name,category_id,quantity,price`
-    Example: `Leche,1,2,1.50;Pan,2,1,0.50`
+    Parses a conversational shopping list string and adds items to the list.
+    Example: "2 leches, 1 café de 12990, y 6 tortillas"
     """
-    parsed_items = []
-    items = text_input.strip().split(';')
-    for item_str in items:
-        try:
-            name, category_id, quantity, price = item_str.split(',')
+    parsed_items_nlp = nlp.parse_shopping_list_text(text_input.text_input)
+    if not parsed_items_nlp:
+        raise HTTPException(status_code=400, detail="Could not parse any items from the input text.")
 
-            # 1. Find or create master item
-            db_item = crud.get_item_by_name(db, name=name)
-            if not db_item:
-                 # Check if category exists
-                db_category = crud.get_category(db, category_id=int(category_id))
-                if not db_category:
-                    raise HTTPException(status_code=400, detail=f"Category with ID {category_id} not found for new item '{name}'")
-                item_master_create = ItemMasterCreate(name_standard=name, category_id=int(category_id))
-                db_item = crud.create_item(db, item=item_master_create)
+    created_list_items = []
+    for parsed_item in parsed_items_nlp:
+        item_name = parsed_item["name"]
 
-            # 2. Create shopping list item
-            shopping_list_create = ShoppingListItemCreate(
-                item_id=db_item.id,
-                planned_quantity=float(quantity),
-                estimated_price=float(price)
-            )
-            created_list_item = crud.create_shopping_list_item(db, item=shopping_list_create)
-            parsed_items.append(created_list_item)
+        # 1. Find or create the master item
+        db_item = crud.get_item_by_name(db, name=item_name)
+        if not db_item:
+            # If item doesn't exist, create it.
+            item_master_create = ItemMasterCreate(name_standard=item_name)
+            db_item = crud.create_item(db, item=item_master_create)
 
-        except ValueError:
-            raise HTTPException(status_code=400, detail=f"Invalid format for item string: '{item_str}'. Expected 'name,category_id,quantity,price'.")
-    return parsed_items
+            # Now, try to classify the new item automatically
+            category_id = nlp.classify_item_category(db, item_name=item_name)
+            if category_id:
+                db_item.category_id = category_id
+                db.commit()
+                db.refresh(db_item)
 
-# Placeholder for price estimation
+        # 2. Create the shopping list item
+        shopping_list_create = ShoppingListItemCreate(
+            item_id=db_item.id,
+            planned_quantity=float(parsed_item["quantity"]),
+            estimated_price=float(parsed_item["price"]) if parsed_item["price"] else None
+        )
+        created_item = crud.create_shopping_list_item(db, item=shopping_list_create)
+        created_list_items.append(created_item)
+
+    return created_list_items
+
 @router.get("/price/estimate/{item_id}", response_model=float)
 def estimate_price(item_id: int, db: Session = Depends(get_db)):
     """
-    ## Price Estimator (Placeholder)
-    This is a placeholder for the price estimation service.
-    For now, it returns a fixed value.
+    Estimates the price of an item based on its most recent purchase price.
     """
+    # 1. Check if item exists
     db_item = crud.get_item(db, item_id=item_id)
     if db_item is None:
-        raise HTTPException(status_code=404, detail="Item not found")
-    # In a real scenario, this would involve a more complex lookup
-    return 10.0  # Placeholder price
+        raise HTTPException(status_code=404, detail="Item not found in master")
+
+    # 2. Get the last known price
+    last_price = crud.get_last_price_for_item(db, item_id=item_id)
+    if last_price is None:
+        # If no historical price, we can't provide an estimate.
+        raise HTTPException(status_code=404, detail="No historical price found for this item to make an estimation.")
+
+    return last_price

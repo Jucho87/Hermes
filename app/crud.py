@@ -94,3 +94,13 @@ def get_transactions_by_item(db: Session, item_id: int):
              .join(models.ShoppingListItem)\
              .filter(models.ShoppingListItem.item_id == item_id)\
              .all()
+
+def get_last_price_for_item(db: Session, item_id: int):
+    last_transaction = db.query(models.TransactionDetail)\
+                         .join(models.ShoppingListItem)\
+                         .filter(models.ShoppingListItem.item_id == item_id)\
+                         .order_by(models.TransactionDetail.purchase_date.desc())\
+                         .first()
+    if last_transaction:
+        return last_transaction.real_unit_price
+    return None
